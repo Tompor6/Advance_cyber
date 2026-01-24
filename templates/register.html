@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center mt-5 mb-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="card shadow-sm border-0 rounded-0">
+            <div class="card-body p-5">
+                <h2 class="text-center mb-4 fw-light text-secondary">Create an Account</h2>
+                <form action="/register" method="POST">
+                    <div class="form-floating mb-3">
+                        <input type="text" name="username" class="form-control rounded-0" id="regUsername"
+                            placeholder="Username" required>
+                        <label for="regUsername" class="text-secondary">Username</label>
+                    </div>
+                    <div class="form-floating mb-3">
+                        <input type="password" name="password" class="form-control rounded-0" id="regPassword"
+                            placeholder="Password" required>
+                        <label for="regPassword" class="text-secondary">Password</label>
+                    </div>
+                    <!-- Role selection hidden/removed from UI -->
+
+                    <button type="submit" class="btn btn-primary w-100 py-2 rounded-0 fs-5">Message Me
+                        (Register)</button>
+                    <!-- "Message Me" is a joke, it should be Register. But let's keep it clear for the user. -->
+                </form>
+                <div class="mt-4 text-center">
+                    <p class="text-muted">Already have an account? <a href="#" data-bs-toggle="modal"
+                            data-bs-target="#loginModal" class="text-decoration-none fw-bold">Log In</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

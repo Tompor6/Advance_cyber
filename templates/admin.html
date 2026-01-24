@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">⚠️ Top Secret Admin Panel ⚠️</div>
+            <div class="card-body text-center">
+                <h2>Welcome, Administrator</h2>
+                <p class="lead">You have bypassed the access controls!</p>
+                <div class="alert alert-success">
+                    <strong>FLAG:</strong> {{ flag }}
+                </div>
+                <hr>
+                <button class="btn btn-outline-danger">Delete All Users</button>
+                <button class="btn btn-outline-danger">Download Database</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

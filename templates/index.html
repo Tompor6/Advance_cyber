@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Hero Carousel -->
+<div id="heroCarousel" class="carousel slide mb-5 rounded-4 overflow-hidden shadow-sm" data-bs-ride="carousel">
+    <div class="carousel-indicators">
+        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="0" class="active"></button>
+        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="1"></button>
+        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="2"></button>
+    </div>
+    <div class="carousel-inner">
+        <div class="carousel-item active"
+            style="height: 400px; background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);">
+            <div class="d-flex align-items-center justify-content-center h-100 text-white">
+                <div class="text-center">
+                    <h1 class="display-3 fw-bold text-shadow">New Arrivals</h1>
+                    <p class="lead">Discover the latest in Cyber Literature</p>
+                </div>
+            </div>
+        </div>
+        <div class="carousel-item"
+            style="height: 400px; background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);">
+            <div class="d-flex align-items-center justify-content-center h-100 text-white">
+                <div class="text-center">
+                    <h1 class="display-3 fw-bold text-shadow">Cyber Week Sale</h1>
+                    <p class="lead">30% Off All Hacking Guides</p>
+                </div>
+            </div>
+        </div>
+        <div class="carousel-item"
+            style="height: 400px; background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);">
+            <div class="d-flex align-items-center justify-content-center h-100 text-white">
+                <div class="text-center">
+                    <h1 class="display-3 fw-bold text-shadow">Join the Club</h1>
+                    <p class="lead">Get exclusive access to zero-days</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <button class="carousel-control-prev" type="button" data-bs-target="#heroCarousel" data-bs-slide="prev">
+        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+        <span class="visually-hidden">Previous</span>
+    </button>
+    <button class="carousel-control-next" type="button" data-bs-target="#heroCarousel" data-bs-slide="next">
+        <span class="carousel-control-next-icon" aria-hidden="true"></span>
+        <span class="visually-hidden">Next</span>
+    </button>
+</div>
+
+<!-- Section Header with See More -->
+<div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+    <h3 class="fw-bold mb-0 border-bottom border-primary border-3 pb-2 pe-3 d-inline-block">Special Labs</h3>
+    <a href="#" class="btn btn-outline-secondary btn-sm">SEE MORE</a>
+</div>
+
+<div class="row mb-5">
+    <div class="col-md-6">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body bg-light rounded">
+                <h5 class="card-title fw-bold">Hacking Guide (Insecure Design)</h5>
+                <p class="text-muted small">Try changing the price before buying!</p>
+                <form action="/buy" method="POST" id="buyForm" class="mt-3">
+                    <input type="hidden" name="item_id" value="1">
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-primary fw-bold">$</span>
+                        <input type="number" name="price" value="50" class="form-control border-start-0 ps-0">
+                        <button type="submit" class="btn btn-primary px-4">Buy</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body bg-light rounded">
+                <h5 class="card-title fw-bold">Premium AI Secrets (Supply Chain)</h5>
+                <p class="text-muted small">Features a secure payment gateway (wink)</p>
+                <form action="/payment" method="POST" onsubmit="handlePayment(event)" class="mt-3">
+                    <div class="input-group">
+                        <input type="text" name="card_number" class="form-control" placeholder="Credit Card Number">
+                        <button type="submit" class="btn btn-warning text-white fw-bold">Pay 120$</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function handlePayment(e) {
+        e.preventDefault();
+        let formData = new FormData(e.target);
+        let res = await fetch('/payment', { method: 'POST', body: formData });
+        let data = await res.json();
+        alert(data.message);
+    }
+</script>
+
+<!-- New Section -->
+<div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+    <h3 class="fw-bold mb-0 border-bottom border-primary border-3 pb-2 pe-3 d-inline-block">New</h3>
+    <a href="#" class="btn btn-outline-secondary btn-sm">SEE MORE</a>
+</div>
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-4 mb-5">
+    {% for product in products %}
+    <div class="col">
+        <div class="card h-100 border-0 shadow-sm product-card">
+            <div class="card-body text-center p-4">
+                <div class="mb-3 d-flex align-items-center justify-content-center bg-white rounded overflow-hidden shadow-sm"
+                    style="height: 300px;">
+                    {% if product[3] %}
+                    <img src="{{ product[3] }}" alt="{{ product[1] }}" class="img-fluid h-100 w-100 object-fit-cover">
+                    {% else %}
+                    <div style="font-size: 3rem;">📖</div>
+                    {% endif %}
+                </div>
+                <!-- Title Tooltip -->
+                <h6 class="card-title fw-bold text-dark text-truncate mb-1" title="{{ product[1] }}">{{ product[1] }}
+                </h6>
+                <div class="mb-2 text-warning small">
+                    ★★★★☆
+                </div>
+                <p class="card-text fw-bold text-primary fs-5 mb-3">${{ product[2] }}</p>
+
+                <form action="/buy" method="POST">
+                    <input type="hidden" name="item_id" value="{{ product[0] }}">
+                    <input type="hidden" name="price" value="{{ product[2] }}">
+                    <button type="submit" class="btn btn-sm btn-primary w-100 rounded-pill">Add to Cart</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+    .text-shadow {
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .product-card {
+        transition: transform 0.2s;
+    }
+
+    .product-card:hover {
+        transform: translateY(-5px);
+    }
+</style>
+{% endblock %}

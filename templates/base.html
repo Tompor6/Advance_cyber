@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberBooks</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        [data-bs-theme="dark"] body {
+            background-color: #212529;
+        }
+
+        [data-bs-theme="dark"] .form-control {
+            background-color: #2b3035;
+            border-color: #495057;
+            color: #fff;
+        }
+
+        [data-bs-theme="dark"] .bg-white {
+            background-color: #212529 !important;
+        }
+
+        [data-bs-theme="dark"] .text-dark {
+            color: #f8f9fa !important;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Top Info Bar -->
+    <div class="py-2 bg-light border-bottom small">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div class="d-none d-md-flex gap-3 text-secondary">
+                <a href="#" class="text-secondary text-decoration-none">Events</a>
+                <a href="#" class="text-secondary text-decoration-none">Blog</a>
+                <a href="#" class="text-secondary text-decoration-none">Gift Card</a>
+                <a href="/chat" class="text-secondary text-decoration-none">Support (AI)</a>
+                <a href="#" class="btn btn-sm btn-primary py-0 rounded-pill">QUIZ</a>
+            </div>
+            <div class="d-flex align-items-center gap-3 ms-auto">
+                <button class="btn btn-link text-secondary text-decoration-none p-0 border-0" id="darkModeToggle">
+                    <i class="bi bi-moon"></i> <span id="darkModeText">Dark Mode</span>
+                </button>
+                {% if session.get('user_id') %}
+                <span class="text-primary fw-bold">Hi, {{ session.username }}</span>
+                <a href="/logout" class="text-secondary text-decoration-none">Logout</a>
+                {% else %}
+                <button type="button" class="btn btn-link text-decoration-none text-secondary p-0"
+                    data-bs-toggle="modal" data-bs-target="#loginModal">Log In</button>
+                <a href="/register" class="btn btn-sm btn-primary px-3 rounded-1">Register</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Header -->
+    <div class="py-4 bg-white border-bottom shadow-sm">
+        <div class="container">
+            <div class="row align-items-center">
+                <!-- Logo -->
+                <div class="col-md-3">
+                    <a href="/" class="d-flex align-items-center text-decoration-none">
+                        <span class="fs-2 text-primary me-2">📚</span>
+                        <div class="lh-1">
+                            <h4 class="m-0 fw-bold text-primary">CyberBooks</h4>
+                            <small class="text-secondary">Vulnerable Shop</small>
+                        </div>
+                    </a>
+                </div>
+                <!-- Search Bar -->
+                <div class="col-md-6">
+                    <form action="/search" method="GET" class="d-flex w-100">
+                        <div class="input-group w-100">
+                            <!-- Removed border manipulation classes that were causing "cuts" -->
+                            <input type="text" name="q" class="form-control form-control-lg border-primary"
+                                placeholder="Find your Product" value="{{ search_query }}">
+                            <button class="btn btn-primary px-3" type="submit">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <!-- Icons -->
+                <div class="col-md-3 text-end d-flex justify-content-end gap-3 align-items-center text-secondary">
+                    <div class="position-relative btn btn-outline-secondary border-0 p-2">
+                        <span class="fs-4">♡</span>
+                        <span
+                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-light text-dark border">0</span>
+                    </div>
+                    <div class="position-relative btn btn-outline-secondary border-0 p-2">
+                        <span class="fs-4">🛍️</span>
+                        <span
+                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Menu -->
+    <div class="bg-white py-3 border-bottom mb-4">
+        <!-- Changed justify-content-center to justify-content-start -->
+        <div class="container d-flex justify-content-start gap-4 fw-medium text-secondary flex-wrap">
+            <a href="/" class="text-dark text-decoration-none">New</a>
+            <a href="/" class="text-secondary text-decoration-none">Bestsellers</a>
+            <a href="/" class="text-secondary text-decoration-none">Fiction</a>
+            <a href="/" class="text-secondary text-decoration-none">Non-Fiction</a>
+            <a href="/" class="text-secondary text-decoration-none">Children's</a>
+            <a href="#" class="text-secondary text-decoration-none">ELT</a>
+            <a href="/admin" class="text-danger text-decoration-none">Admin Panel (Lab)</a>
+            <a href="/debug" class="text-danger text-decoration-none">Debug (Lab)</a>
+            <a href="#" class="text-danger text-decoration-none fw-bold">Sale</a>
+        </div>
+    </div>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Login Modal -->
+    <div class="modal fade" id="loginModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content p-4">
+                <div class="modal-header border-0 pb-0">
+                    <h2 class="modal-title fw-light text-secondary">Log In</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body pt-2">
+                    <div class="text-end mb-4">
+                        <small class="text-muted">Not registered? <a href="/register"
+                                class="text-uppercase text-decoration-none text-dark fw-bold">CREATE AN
+                                ACCOUNT</a></small>
+                    </div>
+                    <form action="/login" method="POST">
+                        <div class="form-floating mb-3">
+                            <input type="text" name="username" class="form-control rounded-0" id="loginUsername"
+                                placeholder="Username">
+                            <label for="loginUsername" class="text-secondary"><i class="bi bi-person me-2"></i>
+                                Username</label>
+                        </div>
+                        <div class="form-floating mb-4">
+                            <input type="password" name="password" class="form-control rounded-0" id="loginPassword"
+                                placeholder="Password">
+                            <label for="loginPassword" class="text-secondary"><i class="bi bi-key me-2"></i>
+                                Password</label>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <div class="form-check">
+                                <input class="form-check-input rounded-0" type="checkbox" id="rememberMe">
+                                <label class="form-check-label text-secondary" for="rememberMe">
+                                    Remember Me
+                                </label>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <a href="#" class="text-secondary text-decoration-none small">Forgot Your Password?</a>
+                            <button type="submit" class="btn btn-outline-primary px-4 rounded-0">Sign In</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-light py-5 mt-5">
+        <div class="container text-center text-secondary">
+            <p>&copy; 2026 CyberBooks. All vulnerabilities reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Dark Mode Logic
+        const toggleBtn = document.getElementById('darkModeToggle');
+        const toggleText = document.getElementById('darkModeText');
+
+        // Check local storage
+        if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.setAttribute('data-bs-theme', 'dark');
+            toggleText.innerText = "Light Mode";
+        }
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+                if (currentTheme === 'dark') {
+                    document.documentElement.setAttribute('data-bs-theme', 'light');
+                    localStorage.setItem('theme', 'light');
+                    toggleText.innerText = "Dark Mode";
+                } else {
+                    document.documentElement.setAttribute('data-bs-theme', 'dark');
+                    localStorage.setItem('theme', 'dark');
+                    toggleText.innerText = "Light Mode";
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>

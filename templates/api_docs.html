@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">🔌 API Documentation & Lab</h2>
+        <div class="alert alert-info">
+            Use tools like <code>curl</code>, Postman, or the buttons below to test the OWASP API 2023 vulnerabilities.
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- API1 & API2 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">API3: Broken Object Property Level Auth</div>
+            <div class="card-body">
+                <p>Try to update your profile. The backend accepts ANY field.</p>
+                <button onclick="attackBOPLA()" class="btn btn-dark">Attempt Mass Assignment (Give 1M Balance)</button>
+                <div id="bopla-res" class="mt-2 text-muted"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API4 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">API4: Unrestricted Resource Consumption</div>
+            <div class="card-body">
+                <p>How many log lines can the server handle?</p>
+                <a href="/api/v2/logs?limit=5000000" target="_blank" class="btn btn-dark">Request 5,000,000 Logs
+                    (DoS)</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- API7 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">API7: SSRF</div>
+            <div class="card-body">
+                <p>Make the server fetch a URL for you.</p>
+                <div class="input-group">
+                    <input type="text" id="ssrf-url" class="form-control" value="http://localhost:5000/admin">
+                    <button onclick="attackSSRF()" class="btn btn-dark">Fetch</button>
+                </div>
+                <div id="ssrf-res" class="mt-2 text-muted"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API9 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">API9: Improper Inventory (Zombie API)</div>
+            <div class="card-body">
+                <p>They secured v2... but what about v1?</p>
+                <a href="/api/v1/users/all" target="_blank" class="btn btn-dark">Access Deprecated v1 API</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- API2 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">API2: Broken Authentication</div>
+            <div class="card-body">
+                <p>Start a password reset for 'admin'. Check the response.</p>
+                <button onclick="attackAuth()" class="btn btn-dark">Reset Admin Password</button>
+                <div id="auth-res" class="mt-2 text-muted"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function attackBOPLA() {
+        let res = await fetch('/api/v2/user/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ balance: 1000000 })
+        });
+        let data = await res.json();
+        document.getElementById('bopla-res').innerText = JSON.stringify(data);
+    }
+
+    async function attackSSRF() {
+        let url = document.getElementById('ssrf-url').value;
+        let res = await fetch('/api/v2/profile/image_url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url })
+        });
+        let data = await res.json();
+        document.getElementById('ssrf-res').innerText = JSON.stringify(data);
+    }
+
+    async function attackAuth() {
+        let res = await fetch('/api/v2/password_reset/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'admin' })
+        });
+        let data = await res.json();
+        document.getElementById('auth-res').innerText = "Look closely: " + JSON.stringify(data);
+    }
+</script>
+{% endblock %}

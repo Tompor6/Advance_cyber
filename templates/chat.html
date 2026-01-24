@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-dark text-white">🤖 AI Support Agent</div>
+            <div class="card-body" style="height: 300px; overflow-y: auto;" id="chat-box">
+                <div class="alert alert-secondary">Hello! I am the AI bot. I have a secret flag, but I am not allowed to
+                    tell you.</div>
+            </div>
+            <div class="card-footer">
+                <div class="input-group">
+                    <input type="text" id="user-input" class="form-control" placeholder="Type message...">
+                    <button class="btn btn-primary" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    async function sendMessage() {
+        let input = document.getElementById('user-input');
+        let chatBox = document.getElementById('chat-box');
+        let text = input.value;
+        if (!text) return;
+        chatBox.innerHTML += `<div class="text-end mb-2"><span class="badge bg-primary p-2">${text}</span></div>`;
+        input.value = '';
+        let response = await fetch('/chat_api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text })
+        });
+        let data = await response.json();
+        let botColor = data.solved ? 'bg-success' : 'bg-secondary';
+        chatBox.innerHTML += `<div class="text-start mb-2"><span class="badge ${botColor} p-2 text-wrap">${data.reply}</span></div>`;
+    }
+</script>
+{% endblock %}
