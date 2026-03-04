@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container py-4" style="max-width:960px;">
+
+  <div class="text-center mb-4">
+    <h2 class="fw-bold">🏴 Challenge Board</h2>
+    <p class="text-muted">Find the vulnerabilities, extract the flags, submit them below.</p>
+  </div>
+
+  <!-- Flag Submission -->
+  <div class="card bg-dark text-white mb-4">
+    <div class="card-body d-flex gap-3 align-items-center">
+      <input id="flag-input" type="text"
+             class="form-control font-monospace"
+             placeholder="Enter flag here... e.g. SQL_MASTER_77">
+      <button onclick="submitFlag()"
+              class="btn btn-danger px-4 fw-bold text-nowrap">
+        Submit Flag
+      </button>
+    </div>
+  </div>
+
+  <!-- Result Message -->
+  <div id="result-msg" class="alert d-none text-center fw-bold mb-4"></div>
+
+  <!-- Solved Counter -->
+  <div class="text-center mb-4">
+    <span id="solved-counter" class="badge bg-success fs-6 px-4 py-2">
+      Solved: 0 / {{ challenges|length }}
+    </span>
+  </div>
+
+  <!-- OWASP Web Top 10 -->
+  <h5 class="text-primary border-bottom border-primary pb-2 mb-3">🌐 OWASP Web Top 10</h5>
+  <div class="row row-cols-1 row-cols-md-2 g-3 mb-5">
+    {% for key, ch in challenges.items() %}
+    {% if "Web" in ch.category %}
+    <div class="col">
+      <div id="card-{{ key }}" class="card h-100 border-top border-primary border-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-1">
+            <strong>{{ ch.name }}</strong>
+            <span id="badge-{{ key }}" class="badge bg-secondary">unsolved</span>
+          </div>
+          <div class="text-primary small mb-2">{{ ch.category }}</div>
+          <details>
+            <summary class="text-muted small" style="cursor:pointer;">💡 Show Hint</summary>
+            <div class="alert alert-warning mt-2 mb-0 small py-2">{{ ch.hint }}</div>
+          </details>
+          <div class="mt-2">
+            <a href="{{ ch.endpoint }}" target="_blank"
+               class="badge bg-light text-dark font-monospace text-decoration-none">
+              {{ ch.endpoint }}
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- OWASP API Top 10 -->
+  <h5 class="text-purple border-bottom pb-2 mb-3" style="color:#9b59b6;">🔌 OWASP API Top 10</h5>
+  <div class="row row-cols-1 row-cols-md-2 g-3 mb-5">
+    {% for key, ch in challenges.items() %}
+    {% if "API" in ch.category %}
+    <div class="col">
+      <div id="card-{{ key }}" class="card h-100 border-top border-3" style="border-color:#9b59b6 !important;">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-1">
+            <strong>{{ ch.name }}</strong>
+            <span id="badge-{{ key }}" class="badge bg-secondary">unsolved</span>
+          </div>
+          <div class="small mb-2" style="color:#9b59b6;">{{ ch.category }}</div>
+          <details>
+            <summary class="text-muted small" style="cursor:pointer;">💡 Show Hint</summary>
+            <div class="alert alert-warning mt-2 mb-0 small py-2">{{ ch.hint }}</div>
+          </details>
+          <div class="mt-2">
+            <a href="{{ ch.endpoint }}" target="_blank"
+               class="badge bg-light text-dark font-monospace text-decoration-none">
+              {{ ch.endpoint }}
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- OWASP LLM Top 10 -->
+  <h5 class="text-warning border-bottom border-warning pb-2 mb-3">🤖 OWASP LLM Top 10</h5>
+  <div class="row row-cols-1 row-cols-md-2 g-3 mb-5">
+    {% for key, ch in challenges.items() %}
+    {% if "LLM" in ch.category %}
+    <div class="col">
+      <div id="card-{{ key }}" class="card h-100 border-top border-warning border-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-1">
+            <strong>{{ ch.name }}</strong>
+            <span id="badge-{{ key }}" class="badge bg-secondary">unsolved</span>
+          </div>
+          <div class="text-warning small mb-2">{{ ch.category }}</div>
+          <details>
+            <summary class="text-muted small" style="cursor:pointer;">💡 Show Hint</summary>
+            <div class="alert alert-warning mt-2 mb-0 small py-2">{{ ch.hint }}</div>
+          </details>
+          <div class="mt-2">
+            <a href="{{ ch.endpoint }}" target="_blank"
+               class="badge bg-light text-dark font-monospace text-decoration-none">
+              {{ ch.endpoint }}
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+</div>
+
+<script>
+const STORAGE_KEY = 'cyberbooks_solved';
+let solved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+window.onload = () => {
+  solved.forEach(key => markSolved(key));
+  updateCounter();
+};
+
+async function submitFlag() {
+  const flag = document.getElementById('flag-input').value.trim();
+  if (!flag) return;
+
+  const res = await fetch('/api/verify_flag', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({flag: flag})
+  });
+  const data = await res.json();
+  const msgDiv = document.getElementById('result-msg');
+
+  if (data.success) {
+    msgDiv.className = 'alert alert-success text-center fw-bold mb-4';
+    msgDiv.textContent = '✅ ' + data.message;
+    if (data.challenge_key && !solved.includes(data.challenge_key)) {
+      solved.push(data.challenge_key);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(solved));
+      markSolved(data.challenge_key);
+      updateCounter();
+    }
+  } else {
+    msgDiv.className = 'alert alert-danger text-center fw-bold mb-4';
+    msgDiv.textContent = '❌ ' + data.message;
+  }
+
+  msgDiv.classList.remove('d-none');
+  document.getElementById('flag-input').value = '';
+  setTimeout(() => msgDiv.classList.add('d-none'), 4000);
+}
+
+function markSolved(key) {
+  const badge = document.getElementById('badge-' + key);
+  const card = document.getElementById('card-' + key);
+  if (badge) {
+    badge.textContent = '✅ solved';
+    badge.className = 'badge bg-success';
+  }
+  if (card) card.style.opacity = '0.7';
+}
+
+function updateCounter() {
+  const total = document.querySelectorAll('[id^="card-"]').length;
+  document.getElementById('solved-counter').textContent =
+    'Solved: ' + solved.length + ' / ' + total;
+}
+</script>
+
+{% endblock %}
