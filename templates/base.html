@@ -93,11 +93,11 @@
                         <span
                             class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-light text-dark border">0</span>
                     </div>
-                    <div class="position-relative btn btn-outline-secondary border-0 p-2">
+                    <a href="/cart" class="position-relative btn btn-outline-secondary border-0 p-2 text-decoration-none">
                         <span class="fs-4">🛍️</span>
-                        <span
-                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">0</span>
-                    </div>
+                        <span id="cartBadge"
+                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{{ session.get('cart', [])|length }}</span>
+                    </a>
                 </div>
             </div>
         </div>
