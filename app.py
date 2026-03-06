@@ -91,16 +91,16 @@ CHALLENGES = {
     "MASS_ASSIGN": {
         "name": "Mass Assignment - Profile Update",
         "category": "OWASP API - API3",
-        "flag": "MASS_ASSIGN",
+        "flag": "MASS_ASSIGNMENT_VULN",
         "hint": "POST to /api/profile/update with JSON. The backend accepts ANY field - try adding a 'role' or 'balance' field: {\"name\": \"Raz\", \"role\": \"admin\"}",
         "endpoint": "/api/profile/update"
     },
     "DOS_KING": {
         "name": "Unrestricted Resource Consumption",
         "category": "OWASP API - API4",
-        "flag": "DOS_KING_11",
-        "hint": "The logs API has a 'limit' parameter with no maximum. Try /api/v2/logs?limit=10000000",
-        "endpoint": "/api/v2/logs?limit="
+        "flag": "RESOURCE_EXHAUSTION",
+        "hint": "Try /api/products/search/heavy?repeat=100000 - the server has no limit on resource consumption.",
+        "endpoint": "/api/products/search/heavy?repeat="
     },
     "SSRF_WIN": {
         "name": "Server Side Request Forgery (SSRF)",
@@ -112,7 +112,7 @@ CHALLENGES = {
     "ZOMBIE_API": {
         "name": "Improper Inventory - Zombie API",
         "category": "OWASP API - API9",
-        "flag": "ZOMBIE_API_66",
+        "flag": "ZOMBIE_EXPOSED",
         "hint": "The app has /api/v2/ endpoints. Have you tried /api/v1/ ? Old API versions sometimes skip authentication entirely.",
         "endpoint": "/api/v1/users/all"
     },
@@ -482,8 +482,8 @@ def update_profile():
         ])
 
         if "role" in data or "balance" in data:
-            response["flag"] = "MASS_ASSIGN"
-            response["vulnerability"] = "Successfully modified restricted fields that should only be accessible by an administrator."
+            response["flag"] = "MASS_ASSIGNMENT_VULN"
+            response["vulnerability"] = "API3 - Mass Assignment"
 
         return jsonify(response)
     except Exception as e:
@@ -502,6 +502,23 @@ def get_logs():
     results = ["Log Entry " + str(i) for i in range(limit)]
     return jsonify({"count": len(results), "logs": results[:10]}) # returning partial but allocating all
 
+# VULNERABILITY: API4 - Unrestricted Resource Consumption
+# No validation on user input causes the server to perform heavy processing,
+# leading to resource exhaustion and denial of service.
+@app.route('/api/products/search/heavy', methods=['GET'])
+def heavy_search():
+    repeat = int(request.args.get('repeat', 1))
+
+    if repeat > 50000:
+        time.sleep(5)
+
+    return jsonify({
+        "repeat": repeat,
+        "message": "The server is processing a heavy resource request...",
+        "flag": "RESOURCE_EXHAUSTION",
+        "vulnerability": "API4 - Unrestricted Resource Consumption"
+    })
+
 # 3. API7:2023 Server Side Request Forgery (SSRF)
 # Vulnerability: Server fetches arbitrary URL provided by user
 @app.route('/api/v2/profile/image_url', methods=['POST'])
@@ -516,17 +533,32 @@ def fetch_profile_image():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 4. API9:2023 Improper Inventory Management
-# Vulnerability: Zombie API (v1) still active, has no authentication
+# VULNERABILITY: API9 - Improper Inventory Management (Zombie API v1) - Unauthenticated access to legacy endpoint
 @app.route('/api/v1/users/all')
 def list_users_v1():
-    # VULNERABLE: This is an old endpoint that should have been deprecated. No Auth check.
     conn = sqlite3.connect('shop.db')
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT * FROM users")
-    users = c.fetchall()
+    rows = c.fetchall()
     conn.close()
-    return jsonify({"version": "v1 (deprecated)", "users": users})
+
+    users = []
+    for row in rows:
+        users.append({
+            "id": row["id"],
+            "username": row["username"],
+            "password": row["password"],
+            "role": row["role"],
+            "balance": row["balance"]
+        })
+
+    return jsonify({
+        "version": "v1 (deprecated)",
+        "users": users,
+        "flag": "ZOMBIE_EXPOSED",
+        "vulnerability": "API9 - Improper Inventory Management"
+    })
 
 # 5. API2:2023 Broken Authentication
 # Vulnerability: Password Reset returns the token to the user
