@@ -544,6 +544,31 @@ def get_logs():
     results = ["Log Entry " + str(i) for i in range(limit)]
     return jsonify({"count": len(results), "logs": results[:10]}) # returning partial but allocating all
 
+# VULNERABILITY: API5 - Anyone can call admin price update functions
+@app.route('/api/admin/products/update-price', methods=['POST'])
+def admin_update_price():
+    data = request.json
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    product_id = data.get('product_id')
+    new_price = data.get('new_price')
+
+    if not product_id or new_price is None:
+        return jsonify({"error": "product_id and new_price are required"}), 400
+
+    conn = sqlite3.connect('shop.db')
+    c = conn.cursor()
+    c.execute("UPDATE products SET price = ? WHERE id = ?", (new_price, product_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "message": f"Price for product {product_id} updated to {new_price} successfully.",
+        "flag": "BFLA_PRICE_MANIPULATION",
+        "vulnerability": "API5 - Broken Function Level Authorization"
+    })
+
 # VULNERABILITY: API4 - Unrestricted Resource Consumption
 # No validation on user input causes the server to perform heavy processing,
 # leading to resource exhaustion and denial of service.
