@@ -84,7 +84,7 @@ CHALLENGES = {
     "BOLA_KING": {
         "name": "BOLA / IDOR - Order Access",
         "category": "OWASP API - API1",
-        "flag": "BOLA_KING",
+        "flag": "BOLA_KING_99",
         "hint": "Orders are accessed by numeric ID at /api/orders/<id>. Try IDs 1, 2, 3 - can you see orders that aren't yours?",
         "endpoint": "/api/orders/2"
     },
@@ -165,6 +165,7 @@ def init_db():
         items TEXT,
         total REAL,
         status TEXT DEFAULT 'processing',
+        flag TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
     
@@ -174,6 +175,16 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (4, 'noa', 'noa_pass!', 'user', 500)")
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (5, 'yossi', 'y0ss1_123', 'user', 75)")
     
+    c.execute("SELECT count(*) FROM orders")
+    if c.fetchone()[0] == 0:
+        import json
+        c.execute("INSERT INTO orders (id, owner_id, items, total, status, flag) VALUES (1, 1, ?, 50.00, 'shipped', 'BOLA_KING_99')",
+                  (json.dumps([{"name": "Python Book", "price": 50.0}]),))
+        c.execute("INSERT INTO orders (id, owner_id, items, total, status, flag) VALUES (2, 2, ?, 0.00, 'delivered', 'BOLA_KING_99')",
+                  (json.dumps([{"name": "Cyber Secrets", "price": 0.0}]),))
+        c.execute("INSERT INTO orders (id, owner_id, items, total, status, flag) VALUES (3, 1, ?, 120.00, 'processing', 'BOLA_KING_99')",
+                  (json.dumps([{"name": "Admin Master Key", "price": 120.0}]),))
+
     # Check if products exist
     c.execute("SELECT count(*) FROM products")
     if c.fetchone()[0] == 0:
@@ -376,14 +387,7 @@ def buy_item():
 def view_cart():
     cart = session.get('cart', [])
     total = sum(item['price'] for item in cart)
-    balance = 0
-    if session.get('user_id'):
-        conn = sqlite3.connect('shop.db')
-        c = conn.cursor()
-        c.execute("SELECT balance FROM users WHERE id = ?", (session['user_id'],))
-        balance = c.fetchone()[0]
-        conn.close()
-    return render_template('cart.html', cart=cart, total=total, balance=balance)
+    return render_template('cart.html', cart=cart, total=total)
 
 @app.route('/cart/remove/<int:index>', methods=['POST'])
 def remove_from_cart(index):
@@ -413,21 +417,10 @@ def checkout():
 
     import json
     total = sum(item['price'] for item in cart)
+    items_json = json.dumps(cart)
 
     conn = sqlite3.connect('shop.db')
     c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE id = ?", (session['user_id'],))
-    balance = c.fetchone()[0]
-
-    if balance < total:
-        conn.close()
-        flash(f"Insufficient balance! You have ${balance:.2f} but the total is ${total:.2f}.", "danger")
-        return redirect('/cart')
-
-    new_balance = balance - total
-    c.execute("UPDATE users SET balance = ? WHERE id = ?", (new_balance, session['user_id']))
-
-    items_json = json.dumps(cart)
     c.execute("INSERT INTO orders (owner_id, items, total, status) VALUES (?, ?, ?, 'processing')",
               (session['user_id'], items_json, total))
     order_id = c.lastrowid
@@ -437,44 +430,9 @@ def checkout():
     session.pop('cart', None)
     return redirect(f'/orders/{order_id}')
 
-@app.route('/orders/<int:order_id>')
-def view_order(order_id):
-    if not session.get('user_id'):
-        flash("Please log in to view orders.", "warning")
-        return redirect('/')
-
-    import json
-    conn = sqlite3.connect('shop.db')
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
-    order = c.fetchone()
-    conn.close()
-
-    if not order:
-        flash("Order not found.", "danger")
-        return redirect('/')
-
-    items = json.loads(order['items'])
-    return render_template('order.html', order=order, items=items)
-
 @app.route('/api/cart/count')
 def cart_count():
     return jsonify({"count": len(session.get('cart', []))})
-
-@app.route('/api/user/balance')
-def user_balance():
-    user_id = session.get('user_id')
-    if not user_id:
-        return jsonify({"balance": None})
-    conn = sqlite3.connect('shop.db')
-    c = conn.cursor()
-    c.execute("SELECT balance, role FROM users WHERE id = ?", (user_id,))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return jsonify({"balance": row[0], "role": row[1]})
-    return jsonify({"balance": None})
 
 @app.route('/api_lab')
 def api_lab():
@@ -588,18 +546,56 @@ def password_reset_start():
 
 # ---------------------------
 
-@app.route('/api/orders/<order_id>')
+@app.route('/orders/<int:order_id>')
+def view_order(order_id):
+    if not session.get('user_id'):
+        flash("Please log in to view orders.", "warning")
+        return redirect('/')
+
+    # VULNERABILITY: BOLA / IDOR — No check that the order's owner_id matches the logged-in user_id.
+    conn = sqlite3.connect('shop.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+    order = c.fetchone()
+    conn.close()
+
+    if not order:
+        flash("Order not found.", "danger")
+        return redirect('/')
+
+    import json
+    items = json.loads(order['items'])
+    return render_template('order.html', order=order, items=items)
+
+@app.route('/api/orders/<int:order_id>', methods=['GET'])
 def get_order(order_id):
-    # VULNERABILITY: BOLA / IDOR (No ownership check)
-    orders = {
-        "1": {"item": "Python Book", "price": 50, "owner_id": 1},
-        "2": {"item": "Cyber Secrets (FLAG: BOLA_KING)", "price": 0, "owner_id": 2},
-        "3": {"item": "Admin Master Key", "cc_number": "4580-1234-5678-9012", "owner_id": 1}
+    if not session.get('user_id'):
+        return jsonify({"error": "Unauthorized - please log in"}), 401
+
+    # VULNERABILITY: BOLA / IDOR — No check that the order's owner_id matches the logged-in user_id.
+    import json
+    conn = sqlite3.connect('shop.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+    order = c.fetchone()
+    conn.close()
+
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    data = {
+        "order_id": order['id'],
+        "owner_id": order['owner_id'],
+        "items": json.loads(order['items']),
+        "total": order['total'],
+        "status": order['status'],
+        "created_at": order['created_at']
     }
-    data = orders.get(order_id)
-    if data:
-        return jsonify(data)
-    return jsonify({"error": "Order not found"}), 404
+    if order['flag']:
+        data['flag'] = order['flag']
+    return jsonify(data)
 
 # @app.route('/chat')
 # def chat_ui():
