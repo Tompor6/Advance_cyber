@@ -17,6 +17,7 @@ logging.basicConfig(filename='app.log', level=logging.DEBUG,
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
+app.json.sort_keys = False
 
 # ============================================================
 # CHALLENGES & HINTS SYSTEM
@@ -88,11 +89,11 @@ CHALLENGES = {
         "endpoint": "/api/orders/2"
     },
     "MASS_ASSIGN": {
-        "name": "Mass Assignment - Balance Manipulation",
+        "name": "Mass Assignment - Profile Update",
         "category": "OWASP API - API3",
-        "flag": "MASS_ASSIGN_WIN",
-        "hint": "POST to /api/v2/user/update with JSON. The backend accepts ANY field - try adding a 'balance' or 'role' field.",
-        "endpoint": "/api/v2/user/update"
+        "flag": "MASS_ASSIGN",
+        "hint": "POST to /api/profile/update with JSON. The backend accepts ANY field - try adding a 'role' or 'balance' field: {\"name\": \"Raz\", \"role\": \"admin\"}",
+        "endpoint": "/api/profile/update"
     },
     "DOS_KING": {
         "name": "Unrestricted Resource Consumption",
@@ -158,9 +159,20 @@ def init_db():
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password TEXT, role TEXT DEFAULT 'user', balance INTEGER DEFAULT 0)''')
     c.execute('''CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT, price REAL, image TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER,
+        items TEXT,
+        total REAL,
+        status TEXT DEFAULT 'processing',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
     
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (1, 'admin', 'admin_pass_123', 'admin', 1000)")
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (2, 'student', '123456', 'user', 10)")
+    c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (3, 'david', 'david2026', 'user', 250)")
+    c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (4, 'noa', 'noa_pass!', 'user', 500)")
+    c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (5, 'yossi', 'y0ss1_123', 'user', 75)")
     
     # Check if products exist
     c.execute("SELECT count(*) FROM products")
@@ -337,12 +349,132 @@ def payment():
 def buy_item():
     item_id = request.form.get('item_id')
     # VULNERABILITY: The price is accepted directly from the form!
-    price = request.form.get('price') 
-    
+    price = float(request.form.get('price', 0))
+
+    conn = sqlite3.connect('shop.db')
+    c = conn.cursor()
+    c.execute("SELECT id, name, price, image FROM products WHERE id = ?", (item_id,))
+    product = c.fetchone()
+    conn.close()
+
+    if 'cart' not in session:
+        session['cart'] = []
+
+    cart = session['cart']
+    item_name = product[1] if product else f"Item #{item_id}"
+    item_image = product[3] if product else None
+    cart.append({"item_id": item_id, "name": item_name, "price": price, "image": item_image})
+    session['cart'] = cart
+
     return jsonify({
-        "status": "success", 
-        "message": f"Bought item {item_id} for ${price}! (Insecure Design: You set the price!)"
+        "status": "success",
+        "message": f"{item_name} added to cart for ${price}!",
+        "cart_count": len(cart)
     })
+
+@app.route('/cart')
+def view_cart():
+    cart = session.get('cart', [])
+    total = sum(item['price'] for item in cart)
+    balance = 0
+    if session.get('user_id'):
+        conn = sqlite3.connect('shop.db')
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE id = ?", (session['user_id'],))
+        balance = c.fetchone()[0]
+        conn.close()
+    return render_template('cart.html', cart=cart, total=total, balance=balance)
+
+@app.route('/cart/remove/<int:index>', methods=['POST'])
+def remove_from_cart(index):
+    cart = session.get('cart', [])
+    if 0 <= index < len(cart):
+        removed = cart.pop(index)
+        session['cart'] = cart
+        flash(f"{removed['name']} removed from cart.", "info")
+    return redirect('/cart')
+
+@app.route('/cart/clear', methods=['POST'])
+def clear_cart():
+    session.pop('cart', None)
+    flash("Cart cleared.", "info")
+    return redirect('/cart')
+
+@app.route('/checkout', methods=['POST'])
+def checkout():
+    if not session.get('user_id'):
+        flash("Please log in to checkout.", "warning")
+        return redirect('/cart')
+
+    cart = session.get('cart', [])
+    if not cart:
+        flash("Your cart is empty.", "warning")
+        return redirect('/cart')
+
+    import json
+    total = sum(item['price'] for item in cart)
+
+    conn = sqlite3.connect('shop.db')
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE id = ?", (session['user_id'],))
+    balance = c.fetchone()[0]
+
+    if balance < total:
+        conn.close()
+        flash(f"Insufficient balance! You have ${balance:.2f} but the total is ${total:.2f}.", "danger")
+        return redirect('/cart')
+
+    new_balance = balance - total
+    c.execute("UPDATE users SET balance = ? WHERE id = ?", (new_balance, session['user_id']))
+
+    items_json = json.dumps(cart)
+    c.execute("INSERT INTO orders (owner_id, items, total, status) VALUES (?, ?, ?, 'processing')",
+              (session['user_id'], items_json, total))
+    order_id = c.lastrowid
+    conn.commit()
+    conn.close()
+
+    session.pop('cart', None)
+    return redirect(f'/orders/{order_id}')
+
+@app.route('/orders/<int:order_id>')
+def view_order(order_id):
+    if not session.get('user_id'):
+        flash("Please log in to view orders.", "warning")
+        return redirect('/')
+
+    import json
+    conn = sqlite3.connect('shop.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+    order = c.fetchone()
+    conn.close()
+
+    if not order:
+        flash("Order not found.", "danger")
+        return redirect('/')
+
+    items = json.loads(order['items'])
+    return render_template('order.html', order=order, items=items)
+
+@app.route('/api/cart/count')
+def cart_count():
+    return jsonify({"count": len(session.get('cart', []))})
+
+@app.route('/api/user/balance')
+def user_balance():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"balance": None})
+    conn = sqlite3.connect('shop.db')
+    c = conn.cursor()
+    c.execute("SELECT balance, role FROM users WHERE id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return jsonify({"balance": row[0], "role": row[1]})
+    return jsonify({"balance": None})
 
 @app.route('/api_lab')
 def api_lab():
@@ -350,27 +482,52 @@ def api_lab():
 
 # --- NEW OWASP API SECURITY 2023 VULNERABILITIES ---
 
-# 1. API3:2023 Broken Object Property Level Authorization (BOPLA) / Mass Assignment
-# Vulnerability: Allows updating 'balance' field which should be restricted.
-@app.route('/api/v2/user/update', methods=['POST'])
+# API3:2023 Mass Assignment
+# VULNERABILITY: Iterates over ALL JSON keys and updates them directly in the DB.
+# The user can send {"role": "admin"} or {"balance": 99999} to escalate privileges.
+@app.route('/api/profile/update', methods=['POST'])
 def update_profile():
-    if not session.get('user_id'):
-        return jsonify({"error": "Unauthorized"}), 401
-    
-    # User sends JSON: {"username": "newname", "balance": 999999}
+    print(session)
+
     data = request.json
-    user_id = session['user_id']
-    
-    # VULNERABLE: Iterates over ALL provided keys and updates them, including 'balance'
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    # VULNERABILITY: Broken Authentication — if no session, accept user_id from JSON body.
+    # An attacker can update ANY user's profile without logging in.
+    user_id = session.get('user_id')
+    if not user_id:
+        user_id = data.get('user_id')
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     conn = sqlite3.connect('shop.db')
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
     try:
         for key, value in data.items():
-            # Dangerous dynamic query construction
+            if key == 'user_id':
+                continue
             query = f"UPDATE users SET {key} = ? WHERE id = ?"
             c.execute(query, (value, user_id))
         conn.commit()
-        return jsonify({"status": "success", "message": "Profile updated", "data": data})
+
+        c.execute("SELECT id, username, role, balance FROM users WHERE id = ?", (user_id,))
+        user = c.fetchone()
+
+        from collections import OrderedDict
+        response = OrderedDict([
+            ("message", "Profile updated successfully"),
+              ("id", user["id"]),
+            ("username", user["username"]),
+            ("balance", user["balance"])
+        ])
+
+        if "role" in data or "balance" in data:
+            response["flag"] = "MASS_ASSIGN"
+            response["vulnerability"] = "Successfully modified restricted fields that should only be accessible by an administrator."
+
+        return jsonify(response)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
