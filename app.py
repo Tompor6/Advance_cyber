@@ -83,7 +83,7 @@ CHALLENGES = {
     "BOLA_KING": {
         "name": "BOLA / IDOR - Order Access",
         "category": "OWASP API - API1",
-        "flag": "BOLA_KING",
+        "flag": "BOLA_KING_99",
         "hint": "Orders are accessed by numeric ID at /api/orders/<id>. Try IDs 1, 2, 3 - can you see orders that aren't yours?",
         "endpoint": "/api/orders/2"
     },
@@ -158,10 +158,29 @@ def init_db():
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password TEXT, role TEXT DEFAULT 'user', balance INTEGER DEFAULT 0)''')
     c.execute('''CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT, price REAL, image TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER,
+        items TEXT,
+        total REAL,
+        status TEXT DEFAULT 'processing',
+        flag TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
     
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (1, 'admin', 'admin_pass_123', 'admin', 1000)")
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (2, 'student', '123456', 'user', 10)")
     
+    c.execute("SELECT count(*) FROM orders")
+    if c.fetchone()[0] == 0:
+        import json
+        c.execute("INSERT INTO orders (id, owner_id, items, total, status, flag) VALUES (1, 1, ?, 50.00, 'shipped', 'BOLA_KING_99')",
+                  (json.dumps([{"name": "Python Book", "price": 50.0}]),))
+        c.execute("INSERT INTO orders (id, owner_id, items, total, status, flag) VALUES (2, 2, ?, 0.00, 'delivered', 'BOLA_KING_99')",
+                  (json.dumps([{"name": "Cyber Secrets", "price": 0.0}]),))
+        c.execute("INSERT INTO orders (id, owner_id, items, total, status, flag) VALUES (3, 1, ?, 120.00, 'processing', 'BOLA_KING_99')",
+                  (json.dumps([{"name": "Admin Master Key", "price": 120.0}]),))
+
     # Check if products exist
     c.execute("SELECT count(*) FROM products")
     if c.fetchone()[0] == 0:
@@ -337,12 +356,79 @@ def payment():
 def buy_item():
     item_id = request.form.get('item_id')
     # VULNERABILITY: The price is accepted directly from the form!
-    price = request.form.get('price') 
-    
+    price = float(request.form.get('price', 0))
+
+    conn = sqlite3.connect('shop.db')
+    c = conn.cursor()
+    c.execute("SELECT id, name, price, image FROM products WHERE id = ?", (item_id,))
+    product = c.fetchone()
+    conn.close()
+
+    if 'cart' not in session:
+        session['cart'] = []
+
+    cart = session['cart']
+    item_name = product[1] if product else f"Item #{item_id}"
+    item_image = product[3] if product else None
+    cart.append({"item_id": item_id, "name": item_name, "price": price, "image": item_image})
+    session['cart'] = cart
+
     return jsonify({
-        "status": "success", 
-        "message": f"Bought item {item_id} for ${price}! (Insecure Design: You set the price!)"
+        "status": "success",
+        "message": f"{item_name} added to cart for ${price}!",
+        "cart_count": len(cart)
     })
+
+@app.route('/cart')
+def view_cart():
+    cart = session.get('cart', [])
+    total = sum(item['price'] for item in cart)
+    return render_template('cart.html', cart=cart, total=total)
+
+@app.route('/cart/remove/<int:index>', methods=['POST'])
+def remove_from_cart(index):
+    cart = session.get('cart', [])
+    if 0 <= index < len(cart):
+        removed = cart.pop(index)
+        session['cart'] = cart
+        flash(f"{removed['name']} removed from cart.", "info")
+    return redirect('/cart')
+
+@app.route('/cart/clear', methods=['POST'])
+def clear_cart():
+    session.pop('cart', None)
+    flash("Cart cleared.", "info")
+    return redirect('/cart')
+
+@app.route('/checkout', methods=['POST'])
+def checkout():
+    if not session.get('user_id'):
+        flash("Please log in to checkout.", "warning")
+        return redirect('/cart')
+
+    cart = session.get('cart', [])
+    if not cart:
+        flash("Your cart is empty.", "warning")
+        return redirect('/cart')
+
+    import json
+    total = sum(item['price'] for item in cart)
+    items_json = json.dumps(cart)
+
+    conn = sqlite3.connect('shop.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO orders (owner_id, items, total, status) VALUES (?, ?, ?, 'processing')",
+              (session['user_id'], items_json, total))
+    order_id = c.lastrowid
+    conn.commit()
+    conn.close()
+
+    session.pop('cart', None)
+    return redirect(f'/orders/{order_id}')
+
+@app.route('/api/cart/count')
+def cart_count():
+    return jsonify({"count": len(session.get('cart', []))})
 
 @app.route('/api_lab')
 def api_lab():
@@ -431,18 +517,56 @@ def password_reset_start():
 
 # ---------------------------
 
-@app.route('/api/orders/<order_id>')
+@app.route('/orders/<int:order_id>')
+def view_order(order_id):
+    if not session.get('user_id'):
+        flash("Please log in to view orders.", "warning")
+        return redirect('/')
+
+    # VULNERABILITY: BOLA / IDOR — No check that the order's owner_id matches the logged-in user_id.
+    conn = sqlite3.connect('shop.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+    order = c.fetchone()
+    conn.close()
+
+    if not order:
+        flash("Order not found.", "danger")
+        return redirect('/')
+
+    import json
+    items = json.loads(order['items'])
+    return render_template('order.html', order=order, items=items)
+
+@app.route('/api/orders/<int:order_id>', methods=['GET'])
 def get_order(order_id):
-    # VULNERABILITY: BOLA / IDOR (No ownership check)
-    orders = {
-        "1": {"item": "Python Book", "price": 50, "owner_id": 1},
-        "2": {"item": "Cyber Secrets (FLAG: BOLA_KING)", "price": 0, "owner_id": 2},
-        "3": {"item": "Admin Master Key", "cc_number": "4580-1234-5678-9012", "owner_id": 1}
+    if not session.get('user_id'):
+        return jsonify({"error": "Unauthorized - please log in"}), 401
+
+    # VULNERABILITY: BOLA / IDOR — No check that the order's owner_id matches the logged-in user_id.
+    import json
+    conn = sqlite3.connect('shop.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+    order = c.fetchone()
+    conn.close()
+
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    data = {
+        "order_id": order['id'],
+        "owner_id": order['owner_id'],
+        "items": json.loads(order['items']),
+        "total": order['total'],
+        "status": order['status'],
+        "created_at": order['created_at']
     }
-    data = orders.get(order_id)
-    if data:
-        return jsonify(data)
-    return jsonify({"error": "Order not found"}), 404
+    if order['flag']:
+        data['flag'] = order['flag']
+    return jsonify(data)
 
 # @app.route('/chat')
 # def chat_ui():
