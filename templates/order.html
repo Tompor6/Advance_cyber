@@ -54,7 +54,7 @@
             </div>
         </div>
 
-        {% if order['owner_id'] != session.get('user_id') %}
+        {% if order['flag'] and order['owner_id'] != session.get('user_id') %}
         <div class="alert alert-success shadow-sm" role="alert">
             <div class="d-flex align-items-center mb-2">
                 <span class="fs-4 me-3">🏴</span>
