@@ -17,6 +17,7 @@ logging.basicConfig(filename='app.log', level=logging.DEBUG,
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
+app.json.sort_keys = False
 
 # ============================================================
 # CHALLENGES & HINTS SYSTEM
@@ -88,11 +89,11 @@ CHALLENGES = {
         "endpoint": "/api/orders/2"
     },
     "MASS_ASSIGN": {
-        "name": "Mass Assignment - Balance Manipulation",
+        "name": "Mass Assignment - Profile Update",
         "category": "OWASP API - API3",
-        "flag": "MASS_ASSIGN_WIN",
-        "hint": "POST to /api/v2/user/update with JSON. The backend accepts ANY field - try adding a 'balance' or 'role' field.",
-        "endpoint": "/api/v2/user/update"
+        "flag": "MASS_ASSIGN",
+        "hint": "POST to /api/profile/update with JSON. The backend accepts ANY field - try adding a 'role' or 'balance' field: {\"name\": \"Raz\", \"role\": \"admin\"}",
+        "endpoint": "/api/profile/update"
     },
     "DOS_KING": {
         "name": "Unrestricted Resource Consumption",
@@ -170,6 +171,9 @@ def init_db():
     
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (1, 'admin', 'admin_pass_123', 'admin', 1000)")
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (2, 'student', '123456', 'user', 10)")
+    c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (3, 'david', 'david2026', 'user', 250)")
+    c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (4, 'noa', 'noa_pass!', 'user', 500)")
+    c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (5, 'yossi', 'y0ss1_123', 'user', 75)")
     
     c.execute("SELECT count(*) FROM orders")
     if c.fetchone()[0] == 0:
@@ -436,27 +440,52 @@ def api_lab():
 
 # --- NEW OWASP API SECURITY 2023 VULNERABILITIES ---
 
-# 1. API3:2023 Broken Object Property Level Authorization (BOPLA) / Mass Assignment
-# Vulnerability: Allows updating 'balance' field which should be restricted.
-@app.route('/api/v2/user/update', methods=['POST'])
+# API3:2023 Mass Assignment
+# VULNERABILITY: Iterates over ALL JSON keys and updates them directly in the DB.
+# The user can send {"role": "admin"} or {"balance": 99999} to escalate privileges.
+@app.route('/api/profile/update', methods=['POST'])
 def update_profile():
-    if not session.get('user_id'):
-        return jsonify({"error": "Unauthorized"}), 401
-    
-    # User sends JSON: {"username": "newname", "balance": 999999}
+    print(session)
+
     data = request.json
-    user_id = session['user_id']
-    
-    # VULNERABLE: Iterates over ALL provided keys and updates them, including 'balance'
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    # VULNERABILITY: Broken Authentication — if no session, accept user_id from JSON body.
+    # An attacker can update ANY user's profile without logging in.
+    user_id = session.get('user_id')
+    if not user_id:
+        user_id = data.get('user_id')
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     conn = sqlite3.connect('shop.db')
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
     try:
         for key, value in data.items():
-            # Dangerous dynamic query construction
+            if key == 'user_id':
+                continue
             query = f"UPDATE users SET {key} = ? WHERE id = ?"
             c.execute(query, (value, user_id))
         conn.commit()
-        return jsonify({"status": "success", "message": "Profile updated", "data": data})
+
+        c.execute("SELECT id, username, role, balance FROM users WHERE id = ?", (user_id,))
+        user = c.fetchone()
+
+        from collections import OrderedDict
+        response = OrderedDict([
+            ("message", "Profile updated successfully"),
+              ("id", user["id"]),
+            ("username", user["username"]),
+            ("balance", user["balance"])
+        ])
+
+        if "role" in data or "balance" in data:
+            response["flag"] = "MASS_ASSIGN"
+            response["vulnerability"] = "Successfully modified restricted fields that should only be accessible by an administrator."
+
+        return jsonify(response)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:

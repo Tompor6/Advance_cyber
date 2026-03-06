@@ -49,6 +49,7 @@
                 </button>
                 {% if session.get('user_id') %}
                 <span class="text-primary fw-bold">Hi, {{ session.username }}</span>
+                <span class="badge bg-success rounded-pill px-2 py-1" id="userBalance">$...</span>
                 <a href="/logout" class="text-secondary text-decoration-none">Logout</a>
                 {% else %}
                 <button type="button" class="btn btn-link text-decoration-none text-secondary p-0"
@@ -211,6 +212,24 @@
                     toggleText.innerText = "Light Mode";
                 }
             });
+        }
+    </script>
+
+    <script>
+        async function refreshBalance() {
+            let el = document.getElementById('userBalance');
+            if (!el) return;
+            try {
+                let res = await fetch('/api/user/balance');
+                let data = await res.json();
+                if (data.balance !== null) {
+                    el.textContent = '$' + data.balance;
+                }
+            } catch(e) {}
+        }
+        if (document.getElementById('userBalance')) {
+            refreshBalance();
+            setInterval(refreshBalance, 3000);
         }
     </script>
 </body>
