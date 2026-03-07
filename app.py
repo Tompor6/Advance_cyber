@@ -10,6 +10,8 @@ import requests
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, make_response
 
 import logging
+import jwt
+from markupsafe import Markup
 
 # VULNERABILITY: Security Logging Failure (CWE-532) - Logging sensitive data
 logging.basicConfig(filename='app.log', level=logging.DEBUG, 
@@ -168,12 +170,19 @@ def init_db():
         flag TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS secret_flags (
+        id INTEGER PRIMARY KEY, 
+        flag_name TEXT, 
+        flag_value TEXT, 
+        dummy TEXT
+    )''')
     
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (1, 'admin', 'admin_pass_123', 'admin', 1000)")
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (2, 'student', '123456', 'user', 10)")
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (3, 'david', 'david2026', 'user', 250)")
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (4, 'noa', 'noa_pass!', 'user', 500)")
     c.execute("INSERT OR IGNORE INTO users (id, username, password, role, balance) VALUES (5, 'yossi', 'y0ss1_123', 'user', 75)")
+    c.execute("INSERT OR IGNORE INTO secret_flags (id, flag_name, flag_value, dummy) VALUES (1, 'SQL_INJECTION', 'SQL_MASTER', 'dummy')")
     
     c.execute("SELECT count(*) FROM orders")
     if c.fetchone()[0] == 0:
@@ -221,6 +230,7 @@ def index():
 @app.route('/search')
 def search():
     query = request.args.get('q', '')
+    safe_query = Markup(query) # VULNERABILITY: Reflected XSS
     conn = sqlite3.connect('shop.db')
     c = conn.cursor()
     # VULNERABILITY: SQL Injection (Search)
@@ -235,7 +245,35 @@ def search():
         products = []
         logging.error(f"Search error: {e}")
     conn.close()
-    return render_template('index.html', products=products, search_query=query)
+    return render_template('index.html', products=products, search_query=safe_query)
+
+@app.route('/api/search')
+def api_search():
+    query = request.args.get('q', '')
+    conn = sqlite3.connect('shop.db')
+    c = conn.cursor()
+    
+    # VULNERABILITY: SQL Injection
+    sql_query = f"SELECT id, name, price, image FROM products WHERE name LIKE '%{query}%'"
+    
+    try:
+        c.execute(sql_query)
+        rows = c.fetchall()
+        
+        products = []
+        for row in rows:
+            products.append({
+                "id": row[0],
+                "name": row[1],
+                "price": row[2],
+                "image": row[3]
+            })
+            
+        return jsonify({"results": products})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -582,7 +620,8 @@ def list_users_v1():
         "version": "v1 (deprecated)",
         "users": users,
         "flag": "ZOMBIE_EXPOSED",
-        "vulnerability": "API9 - Improper Inventory Management"
+        "crypto_fail_flag": "CRYPTO_FAIL",
+        "vulnerability": "API9 + A02 Crypto Failure"
     })
 
 # 5. API2:2023 Broken Authentication
@@ -599,6 +638,51 @@ def password_reset_start():
         "message": "Reset link sent to email (simulated)",
         "debug_token": token # OOPS!
     })
+
+# 6. A02:2021 Cryptographic Failures & A07:2021 Identification and Authentication Failures
+@app.route('/api/v2/token', methods=['POST'])
+def generate_token():
+    username = request.json.get('username', 'student')
+    # VULNERABILITY: Weak string used for secret key
+    payload = {
+        "username": username,
+        "role": "user",
+        "exp": time.time() + 3600
+    }
+    token = jwt.encode(payload, 'secret', algorithm='HS256')
+    return jsonify({"token": token})
+
+@app.route('/api/v2/admin_data', methods=['GET'])
+def admin_data():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({"error": "Missing token"}), 401
+    
+    token = auth_header.split(' ')[1]
+    
+    try:
+        # VULNERABILITY: JWT alg="none" bypass
+        unverified_header = jwt.get_unverified_header(token)
+        if unverified_header.get('alg', '').lower() == 'none':
+            # Explicitly disable signature verification for "none" algorithm
+            decoded = jwt.decode(token, options={"verify_signature": False})
+        else:
+            decoded = jwt.decode(token, 'secret', algorithms=['HS256'])
+            
+        if decoded.get('role') == 'admin':
+            return jsonify({
+                "message": "Welcome Admin!",
+                "flag": "JWT_BYPASS_SUCCESS",
+                "secret_data": "Top secret admin dashboard"
+            })
+        else:
+            return jsonify({"error": "Unauthorized. Admin role required."}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ---------------------------
